@@ -27,11 +27,10 @@ const organizationSchema = new mongoose.Schema({
     }],
 }, { timestamps: true });
 
-organizationSchema.pre('save', async function (next) {
-    if (!this.isModified('adminPassword')) return next();
+organizationSchema.pre('save', async function () {
+    if (!this.isModified('adminPassword')) return;
     const salt = await bcrypt.genSalt(10);
     this.adminPassword = await bcrypt.hash(this.adminPassword, salt);
-    next();
 });
 
 organizationSchema.methods.matchPassword = async function (entered) {
