@@ -43,7 +43,7 @@ const SEED_ROLE_NAMES = new Set([
 const SEED_ORAL_ONLY = new Set(['UI/UX Designer', 'Product Manager']);
 
 const StatCard = ({ label, value, sub, color = 'teal' }) => {
-    const colors = { teal: 'from-teal-500/20 to-teal-500/5 border-teal-500/30 text-teal-400', blue: 'from-blue-500/20 to-blue-500/5 border-blue-500/30 text-blue-400', purple: 'from-purple-500/20 to-purple-500/5 border-purple-500/30 text-purple-400', amber: 'from-amber-500/20 to-amber-500/5 border-amber-500/30 text-amber-400' };
+    const colors = { teal: 'from-teal-500/20 to-teal-500/5 border-teal-500/30 text-teal-400', blue: 'from-blue-500/20 to-blue-500/5 border-blue-500/30 text-blue-400', purple: 'from-purple-500/20 to-purple-500/5 border-purple-500/30 text-purple-400', amber: 'from-amber-500/20 to-amber-500/5 border-amber-500/30 text-amber-400', violet: 'from-violet-500/20 to-violet-500/5 border-violet-500/30 text-violet-400', green: 'from-green-500/20 to-green-500/5 border-green-500/30 text-green-400' };
     return (
         <div className={`bg-gradient-to-br ${colors[color]} border rounded-2xl p-5`}>
             <p className="text-slate-400 text-xs uppercase tracking-widest font-bold">{label}</p>
