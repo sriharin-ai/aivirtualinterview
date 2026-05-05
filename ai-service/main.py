@@ -3,6 +3,10 @@ import os
 import io
 import json
 import tempfile
+import whisper
+import warnings
+warnings.filterwarnings("ignore")
+
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -14,12 +18,20 @@ from pydub import AudioSegment
 load_dotenv()
 
 AI_SERVICE_PORT = int(os.getenv("AI_SERVICE_PORT", 8000))
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "mistralai/mistral-7b-instruct")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = OpenAI(
+    api_key=OPENROUTER_API_KEY,
+    base_url="https://openrouter.ai/api/v1",
+)
 
-app = FastAPI(title="AI Interviewer Microservice", version="2.0")
+# Load Whisper model once at startup
+print("Loading Whisper model...")
+whisper_model = whisper.load_model("base.en")
+print("Whisper model loaded.")
+
+app = FastAPI(title="AI Interviewer Microservice", version="3.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -67,13 +79,12 @@ class EvaluationResponse(BaseModel):
 
 @app.get("/")
 async def root():
-    return {"message": "Hello from AI Interviewer Microservice!", "model": OPENAI_MODEL}
+    return {"message": "AI Interviewer Microservice running!", "model": OPENROUTER_MODEL, "transcription": "local-whisper"}
 
 
 @app.post("/generate-questions", response_model=QuestionResponse)
 async def generate_questions(request: QuestionRequest):
     try:
-        # Resolve coding count — explicit value overrides interview_type heuristic
         if request.coding_count is not None:
             coding_count = request.coding_count
         elif request.interview_type == "coding-mix":
@@ -83,7 +94,6 @@ async def generate_questions(request: QuestionRequest):
 
         oral_count = request.oral_count if request.oral_count is not None else (request.count - coding_count)
 
-        # Build type instruction — coding is optional; 0 means fully oral
         if coding_count > 0:
             instruction = (
                 f"The first {coding_count} questions MUST be coding/implementation challenges "
@@ -130,7 +140,7 @@ async def generate_questions(request: QuestionRequest):
         )
 
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=OPENROUTER_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -140,7 +150,7 @@ async def generate_questions(request: QuestionRequest):
 
         raw_text = response.choices[0].message.content.strip()
         questions = [q.strip() for q in raw_text.split("\n") if q.strip()]
-        return QuestionResponse(questions=questions[: request.count], model_used=OPENAI_MODEL)
+        return QuestionResponse(questions=questions[: request.count], model_used=OPENROUTER_MODEL)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -158,13 +168,8 @@ async def transcribe_audio(file: UploadFile = File(...)):
             temp_audio_path = tmp.name
             audio_segment.export(temp_audio_path, format="mp3")
 
-        with open(temp_audio_path, "rb") as audio_file:
-            transcript = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio_file,
-            )
-
-        return {"transcription": transcript.text.strip()}
+        result = whisper_model.transcribe(temp_audio_path)
+        return {"transcription": result["text"].strip()}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -208,16 +213,22 @@ async def evaluate(request: EvaluationRequest):
         )
 
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=OPENROUTER_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.1,
-            response_format={"type": "json_object"},
         )
 
         response_text = response.choices[0].message.content.strip()
+
+        # Strip markdown code fences if model wraps JSON in them
+        if response_text.startswith("```"):
+            response_text = response_text.strip("`").strip()
+            if response_text.startswith("json"):
+                response_text = response_text[4:].strip()
+
         evaluation_data = json.loads(response_text)
 
         if "idealAnswer" in evaluation_data and not isinstance(evaluation_data["idealAnswer"], str):
