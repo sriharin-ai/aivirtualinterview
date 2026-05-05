@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+body {
+  @apply bg-gray-50;
+}
+
+@media print {
+  /* Hide everything that isn't the review content */
+  nav,
+  header,
+  .no-print,
+  button,
+  a[href] {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+    font-size: 11pt;
+    color: #1e293b;
+  }
+
+  /* Reset max-width so content fills the page */
+  .max-w-7xl {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Remove shadows and rounded corners */
+  * {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  /* Keep dark code blocks readable in print */
+  .bg-slate-900,
+  pre.bg-slate-900 {
+    background-color: #f8fafc !important;
+    color: #334155 !important;
+    border: 1px solid #e2e8f0 !important;
+  }
+
+  /* Avoid breaking question cards mid-page */
+  .group {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    margin-bottom: 24pt;
+  }
+
+  /* Chart container — let it sit naturally */
+  canvas {
+    max-width: 100% !important;
+  }
+
+  /* Print header */
+  @page {
+    margin: 1.5cm 2cm;
+    size: A4;
+  }
+}

@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "rDIORQyCAAzzM9QWcpKuw"
+uri = "file://PROJECT_STATUS.md"
+type = "text"
+title = "AI Interviewer — Full Project Status Document"

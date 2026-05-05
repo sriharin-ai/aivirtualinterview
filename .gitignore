@@ -1,0 +1,26 @@
+venv
+node_modules
+.env
+.env.local
+package-lock.json
+
+# Python
+__pycache__/
+*.py[cod]
+.pythonlibs/
+*.egg-info/
+
+# Uploads (temp audio files)
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Build output
+frontend/dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Replit
+.replit.nix
+.cache/

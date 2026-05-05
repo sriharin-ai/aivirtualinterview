@@ -1,0 +1,25 @@
+The user wants to proceed with the difficulty-adaptive question ordering mode. Let me think carefully about what this feature entails:
+
+Concept: Instead of presenting questions in a fixed order (easy → medium → hard), the system dynamically reorders upcoming questions based on the candidate's live performance scores as they answer.
+
+How it could work:
+
+Questions are pre-assigned difficulty levels (easy/medium/hard)
+
+As the user answers and gets evaluated, the system looks at their running average score
+
+If they're doing well (high scores), the next unanswered question shown should be harder
+
+If they're struggling (low scores), the next question should be easier
+
+The "next" button intelligently picks the best next question
+
+For implementation, I'm thinking this stays entirely on the frontend without backend changes. The questions stay in their original order in the database, but I'll maintain a separate navigationOrder array that tracks the reordered sequence. The key is computing which unanswered question best matches the candidate's current performance level. I'll add an "Adaptive Mode" toggle to InterviewRunner.jsx, leverage the existing tracking of answered questions through submittedLocal and q.isSubmitted, and after each submission, calculate the optimal next question index so the "Next →" button jumps to that recommendation instead of just moving sequentially.
+
+For the selection logic, I'm gathering all unanswered questions and computing a running average from evaluated ones, then matching difficulty: if the average is 70 or above, pick the hardest remaining question; between 40 and 70, go for medium difficulty; below 40, choose the easiest. If no question matches that difficulty tier, just pick the next unanswered one. I'll also add a small indicator showing adaptive mode is active and explaining why that particular question was selected.
+
+Now I'm ready to implement this. I'll add the adaptiveMode state toggle, create a getNextAdaptiveQuestion function that handles the selection logic, and modify the "Next →" button to use adaptive navigation when the mode is enabled.
+
+Implementing the selection function... Adding a "Next Suggested" indicator to the progress header that displays which question comes next in adaptive mode and explains the reasoning based on the current average score.
+
+Let me read the current InterviewRunner progress header and bottom nav sections to implement the adaptive mode cleanly.
