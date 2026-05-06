@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { createSession, getSessions, reset, deleteSession, fetchPublicTemplates, fetchLeaderboard, fetchPublicRoles, fetchPublicSkills } from '../features/sessions/sessionSlice'
-import { fetchEligibleDrives, enrollInDrive, fetchStudentLeaderboard, clearStudentLeaderboard } from '../features/drives/drivesSlice'
+import { createSession, getSessions, reset, deleteSession, fetchPublicTemplates, fetchLeaderboard, fetchPublicRoles, fetchPublicSkills, clearJustQualified } from '../features/sessions/sessionSlice'
+import { fetchEligibleDrives, enrollInDrive, fetchStudentLeaderboard, clearStudentLeaderboard, fetchDriveSessions, clearDriveSessions, fetchMyEnrollments } from '../features/drives/drivesSlice'
 import { updateProfile, saveUserGoal, fetchBatchLeaderboard } from '../features/auth/authSlice'
 import { toast } from 'react-toastify'
 import SessionCard from "../components/SessionCard"
@@ -416,8 +416,8 @@ const Dashboard = () => {
   const location = useLocation();
   const skillsInputRef = useRef(null);
   const { user } = useSelector((state) => state.auth);
-  const { sessions, templates, leaderboard, publicRoles, publicSkills, isLoading, isGenerating, isError, message } = useSelector((state) => state.sessions);
-  const { eligibleDrives, studentLeaderboard } = useSelector((state) => state.drives);
+  const { sessions, templates, leaderboard, publicRoles, publicSkills, isLoading, isGenerating, isError, message, justQualifiedDrive } = useSelector((state) => state.sessions);
+  const { eligibleDrives, myEnrollments, studentLeaderboard, driveSessionsMap, driveSessionsLoading } = useSelector((state) => state.drives);
   const { batchLeaderboard, batchLeaderboardLoading } = useSelector((state) => state.auth);
   const isProcessing = isGenerating;
 
@@ -445,8 +445,8 @@ const Dashboard = () => {
     dispatch(fetchLeaderboard());
     dispatch(fetchPublicRoles());
     dispatch(fetchPublicSkills());
-    if (user?.orgId) dispatch(fetchEligibleDrives());
-  }, [dispatch]);
+    if (user?.orgId) { dispatch(fetchEligibleDrives()); dispatch(fetchMyEnrollments()); }
+  }, [dispatch, user?.orgId]);
 
   useEffect(() => {
     if (!sessions.length) return;
@@ -842,8 +842,21 @@ const Dashboard = () => {
     }
   };
 
-  const [activeDriveId, setActiveDriveId] = useState(null);
-  const [lbDriveId, setLbDriveId]         = useState(null);
+  const [activeDriveId, setActiveDriveId]   = useState(null);
+  const [lbDriveId, setLbDriveId]           = useState(null);
+  const [historyDriveId, setHistoryDriveId] = useState(null);
+  const [pastDrivesExpanded, setPastDrivesExpanded]     = useState(true);
+  const [pastHistoryDriveId, setPastHistoryDriveId]     = useState(null);
+
+  const pastDriveEnrollments = useMemo(() => {
+    const eligibleIds = new Set(eligibleDrives.map(d => d._id));
+    return myEnrollments.filter(e => {
+      const drive = e.driveId;
+      if (!drive || typeof drive !== 'object') return false;
+      return !eligibleIds.has(String(drive._id)) &&
+        (drive.status === 'closed' || new Date(drive.visitDate) < Date.now());
+    });
+  }, [myEnrollments, eligibleDrives]);
 
   useEffect(() => {
     const ds = location.state?.driveSession;
@@ -911,6 +924,11 @@ const Dashboard = () => {
     }
     return map;
   }, [sessions]);
+
+  const taggableDrives = useMemo(
+    () => eligibleDrives.filter(d => d.enrollment && !d.enrollment.certificateIssued),
+    [eligibleDrives]
+  );
 
   const recentlyUsedTemplates = useMemo(() => {
     if (!templates.length || !sessions.length) return [];
@@ -1031,6 +1049,31 @@ const Dashboard = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-12 space-y-8 sm:space-y-12 animate-in duration-700">
+
+      {/* ── Qualification congratulations banner ── */}
+      {justQualifiedDrive && (
+        <div className="relative flex items-start gap-4 bg-gradient-to-r from-emerald-50 to-teal-50 border-2 border-emerald-300 rounded-2xl px-5 py-4 shadow-md animate-in slide-in-from-top duration-500">
+          <span className="text-4xl shrink-0 mt-0.5">🏆</span>
+          <div className="min-w-0 flex-1">
+            <p className="font-black text-emerald-800 text-base leading-tight">
+              You qualified for {justQualifiedDrive.companyName}!
+            </p>
+            <p className="text-sm text-emerald-700 mt-0.5">
+              Your score of <span className="font-black">{justQualifiedDrive.bestScore}%</span> cleared the {justQualifiedDrive.minScore}% minimum for the <span className="font-semibold">{justQualifiedDrive.jobRole}</span> role.
+              Your certificate is ready to download from the drive card below.
+            </p>
+          </div>
+          <button
+            onClick={() => { dispatch(clearJustQualified()); dispatch(fetchEligibleDrives()); dispatch(fetchMyEnrollments()); }}
+            className="shrink-0 text-emerald-500 hover:text-emerald-700 transition mt-0.5"
+            aria-label="Dismiss"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-6 sm:pb-8">
         <div>
@@ -1574,12 +1617,31 @@ const Dashboard = () => {
                             dispatch(clearStudentLeaderboard());
                           } else {
                             setLbDriveId(drive._id);
+                            setHistoryDriveId(null);
                             dispatch(fetchStudentLeaderboard(drive._id));
                           }
                         }}
                         className="text-teal-600 font-black hover:underline"
                       >
                         {lbDriveId === drive._id ? 'Hide Ranking' : 'View Ranking'}
+                      </button>
+                    )}
+                    {enrolled && sessionsCompleted > 0 && (
+                      <button
+                        onClick={() => {
+                          if (historyDriveId === drive._id) {
+                            setHistoryDriveId(null);
+                            dispatch(clearDriveSessions(drive._id));
+                          } else {
+                            setHistoryDriveId(drive._id);
+                            setLbDriveId(null);
+                            dispatch(clearStudentLeaderboard());
+                            dispatch(fetchDriveSessions(drive._id));
+                          }
+                        }}
+                        className="text-violet-600 font-black hover:underline"
+                      >
+                        {historyDriveId === drive._id ? 'Hide History' : 'Session History'}
                       </button>
                     )}
                   </div>
@@ -1631,6 +1693,41 @@ const Dashboard = () => {
                     </div>
                   )}
 
+                  {historyDriveId === drive._id && (
+                    <div className="bg-white/60 border border-violet-100 rounded-xl p-3 space-y-1.5">
+                      <p className="text-[10px] font-black uppercase text-violet-700 tracking-widest">Session History</p>
+                      {driveSessionsLoading[drive._id] ? (
+                        <p className="text-[11px] text-slate-400 text-center py-2">Loading…</p>
+                      ) : driveSessionsMap[drive._id]?.length > 0 ? (
+                        driveSessionsMap[drive._id].map((s, idx) => {
+                          const score = s.overallScore ?? null;
+                          const qualified = score !== null && score >= drive.minScore;
+                          return (
+                            <div
+                              key={s._id}
+                              className="flex items-center gap-2 text-[11px] rounded-lg px-2 py-1.5 bg-white/80 border border-violet-50 cursor-pointer hover:border-violet-200 transition-colors"
+                              onClick={() => navigate(`/review/${s._id}`)}
+                            >
+                              <span className="w-5 text-center font-black text-slate-400">#{idx + 1}</span>
+                              <span className="flex-1 truncate text-slate-600">
+                                {s.role || drive.interviewRole}{s.level ? ` · ${s.level}` : ''}
+                              </span>
+                              <span className="text-slate-400 shrink-0">
+                                {new Date(s.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              </span>
+                              <span className={`font-black shrink-0 ${score === null ? 'text-slate-400' : qualified ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                {score !== null ? `${score}%` : '—'}
+                              </span>
+                              {qualified && <span className="text-emerald-500 text-[10px] shrink-0">✓</span>}
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <p className="text-[11px] text-slate-400 text-center py-2">No sessions recorded yet for this drive.</p>
+                      )}
+                    </div>
+                  )}
+
                   {drive.description && (
                     <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-2">{drive.description}</p>
                   )}
@@ -1678,6 +1775,149 @@ const Dashboard = () => {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* ── Past Placement Drives ── */}
+      {pastDriveEnrollments.length > 0 && (
+        <div className="space-y-3">
+          <button
+            onClick={() => setPastDrivesExpanded(v => !v)}
+            className="flex items-center gap-2 w-full text-left group"
+          >
+            <span className="text-lg leading-none">🗂</span>
+            <h2 className="text-xs font-black text-slate-700 uppercase tracking-widest flex-1">
+              Past Placement Drives
+              <span className="ml-2 text-[10px] font-bold text-slate-400 normal-case tracking-normal">
+                ({pastDriveEnrollments.length})
+              </span>
+            </h2>
+            <span className="text-slate-400 text-xs font-bold group-hover:text-slate-600 transition-colors">
+              {pastDrivesExpanded ? '▲ Collapse' : '▼ Expand'}
+            </span>
+          </button>
+
+          {pastDrivesExpanded && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {pastDriveEnrollments.map(enrollment => {
+                const drive = enrollment.driveId;
+                const qualified = enrollment.certificateIssued;
+                const bestScore = enrollment.bestScore;
+                const sessionsCompleted = enrollment.sessionsCompleted ?? 0;
+                const progressPct = bestScore != null && drive.minScore > 0
+                  ? Math.min(100, Math.round((bestScore / drive.minScore) * 100))
+                  : 0;
+                const driveId = drive._id;
+                const visitDateStr = drive.visitDate
+                  ? new Date(drive.visitDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                  : null;
+                return (
+                  <div key={driveId} className={`rounded-2xl border px-5 py-4 space-y-3 ${
+                    qualified ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'
+                  }`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-black text-slate-800 text-sm leading-tight truncate">{drive.companyName}</p>
+                        <p className="text-xs text-slate-500 font-medium mt-0.5 truncate">{drive.jobRole}</p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        {qualified ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-black bg-emerald-500 text-white border border-emerald-600 px-2 py-0.5 rounded-full shadow-sm">✅ Qualified!</span>
+                        ) : (
+                          <span className="text-[10px] font-black bg-slate-200 text-slate-500 border border-slate-300 px-2 py-0.5 rounded-full">Closed</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 text-[11px] text-slate-500 font-medium flex-wrap">
+                      {visitDateStr && (
+                        <span className="text-slate-400 font-bold">🗓 {visitDateStr}</span>
+                      )}
+                      <span>Min: <span className="font-black text-slate-700">{drive.minScore}%</span></span>
+                      <span>Best: <span className={`font-black ${bestScore == null ? 'text-slate-400' : bestScore >= drive.minScore ? 'text-emerald-600' : 'text-amber-600'}`}>
+                        {bestScore != null ? `${bestScore}%` : '—'}
+                      </span></span>
+                      <span className="font-bold text-slate-500">{sessionsCompleted} {sessionsCompleted === 1 ? 'session' : 'sessions'}</span>
+                      {sessionsCompleted > 0 && (
+                        <button
+                          onClick={() => {
+                            if (pastHistoryDriveId === driveId) {
+                              setPastHistoryDriveId(null);
+                              dispatch(clearDriveSessions(driveId));
+                            } else {
+                              setPastHistoryDriveId(driveId);
+                              dispatch(fetchDriveSessions(driveId));
+                            }
+                          }}
+                          className="text-violet-600 font-black hover:underline"
+                        >
+                          {pastHistoryDriveId === driveId ? 'Hide History' : 'Session History'}
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[10px] font-bold">
+                        <span className={qualified ? 'text-emerald-600' : 'text-slate-500'}>
+                          {qualified ? '🎉 Score goal reached!' : `Score vs ${drive.minScore}% target`}
+                        </span>
+                        <span className={qualified ? 'text-emerald-600' : bestScore != null && bestScore >= drive.minScore ? 'text-emerald-600' : 'text-slate-500'}>
+                          {bestScore != null ? `${bestScore}% / ${drive.minScore}%` : `0% / ${drive.minScore}%`}
+                        </span>
+                      </div>
+                      <div className="w-full h-2 bg-white/70 rounded-full overflow-hidden border border-slate-200">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${qualified ? 'bg-emerald-500' : progressPct >= 100 ? 'bg-emerald-400' : progressPct >= 60 ? 'bg-teal-400' : 'bg-amber-400'}`}
+                          style={{ width: `${progressPct}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {pastHistoryDriveId === driveId && (
+                      <div className="bg-white/60 border border-violet-100 rounded-xl p-3 space-y-1.5">
+                        <p className="text-[10px] font-black uppercase text-violet-700 tracking-widest">Session History</p>
+                        {driveSessionsLoading[driveId] ? (
+                          <p className="text-[11px] text-slate-400 text-center py-2">Loading…</p>
+                        ) : driveSessionsMap[driveId]?.length > 0 ? (
+                          driveSessionsMap[driveId].map((s, idx) => {
+                            const score = s.overallScore ?? null;
+                            const didQualify = score !== null && score >= drive.minScore;
+                            return (
+                              <div
+                                key={s._id}
+                                className="flex items-center gap-2 text-[11px] rounded-lg px-2 py-1.5 bg-white/80 border border-violet-50 cursor-pointer hover:border-violet-200 transition-colors"
+                                onClick={() => navigate(`/review/${s._id}`)}
+                              >
+                                <span className="w-5 text-center font-black text-slate-400">#{idx + 1}</span>
+                                <span className="flex-1 truncate text-slate-600">
+                                  {s.role || drive.interviewRole}{s.level ? ` · ${s.level}` : ''}
+                                </span>
+                                <span className="text-slate-400 shrink-0">
+                                  {new Date(s.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                </span>
+                                <span className={`font-black shrink-0 ${score === null ? 'text-slate-400' : didQualify ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                  {score !== null ? `${score}%` : '—'}
+                                </span>
+                                {didQualify && <span className="text-emerald-500 text-[10px] shrink-0">✓</span>}
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <p className="text-[11px] text-slate-400 text-center py-2">No sessions recorded for this drive.</p>
+                        )}
+                      </div>
+                    )}
+
+                    {qualified && (
+                      <div className="flex-1 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-xs font-black rounded-xl text-center shadow-sm ring-2 ring-emerald-300 ring-offset-1">
+                        🏆 Certificate Issued — Well Done!
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -2358,6 +2598,41 @@ const Dashboard = () => {
               {isProcessing ? <><span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span> Generating...</> : <span className="text-sm">Start Interview</span>}
             </button>
           </div>
+
+          {/* Drive selector (optional) */}
+          {taggableDrives.length > 0 && (
+            <div className="space-y-1.5 border-t border-slate-100 pt-5">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                Tag a Drive <span className="text-slate-300 normal-case font-medium tracking-normal">(optional)</span>
+              </label>
+              <select
+                value={activeDriveId || ''}
+                onChange={e => {
+                  const driveId = e.target.value;
+                  if (!driveId) {
+                    setActiveDriveId(null);
+                    return;
+                  }
+                  const drive = taggableDrives.find(d => d._id === driveId);
+                  if (!drive) return;
+                  setActiveDriveId(driveId);
+                  setFormData(f => ({
+                    ...f,
+                    role: drive.interviewRole || drive.jobRole || f.role,
+                    level: drive.interviewLevel || 'Mid-Level',
+                  }));
+                }}
+                className="w-full bg-slate-50 border-none rounded-xl sm:rounded-2xl p-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="">— No drive selected —</option>
+                {taggableDrives.map(d => (
+                  <option key={d._id} value={d._id}>
+                    {d.companyName} — {d.jobRole}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Row 2: Resume + Skills */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-slate-100 pt-5">

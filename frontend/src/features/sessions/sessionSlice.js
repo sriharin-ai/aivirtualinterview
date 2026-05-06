@@ -34,7 +34,8 @@ const initialState = {
     isGenerating: false,
     isError: false,
     isLoading: false,
-    message: ''
+    message: '',
+    justQualifiedDrive: null,
 }
 
 export const fetchPublicRoles = createAsyncThunk('sessions/fetchPublicRoles', async (_, thunkAPI) => {
@@ -167,6 +168,9 @@ export const sessionSlice = createSlice({
             state.isLoading = false;
             state.isGenerating = false;
         },
+        clearJustQualified: (state) => {
+            state.justQualifiedDrive = null;
+        },
         socketUpdateSession: (state, action) => {
             const { sessionId, status, message, session } = action.payload;
             state.message = message;
@@ -242,6 +246,9 @@ export const sessionSlice = createSlice({
                 state.isError = true;
                 state.message = action.payload;
             })
+            .addCase(endSession.fulfilled, (state, action) => {
+                state.justQualifiedDrive = action.payload?.justQualifiedDrive ?? null;
+            })
             .addCase(toggleShare.fulfilled, (state, action) => {
                 const { sessionId, isShared, shareToken } = action.payload;
                 if (state.activeSession && state.activeSession._id === sessionId) {
@@ -255,5 +262,5 @@ export const sessionSlice = createSlice({
     }
 })
 
-export const { reset, socketUpdateSession, setActiveSession } = sessionSlice.actions;
+export const { reset, socketUpdateSession, setActiveSession, clearJustQualified } = sessionSlice.actions;
 export default sessionSlice.reducer;

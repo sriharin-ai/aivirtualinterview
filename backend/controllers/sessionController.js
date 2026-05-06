@@ -528,6 +528,7 @@ const endSession = asyncHandler(async (req, res) => {
     await session.save();
 
     // Update DriveEnrollment if this session belongs to a drive
+    let justQualifiedDrive = null;
     if (session.driveId) {
         try {
             const drive = await PlacementDrive.findById(session.driveId);
@@ -541,6 +542,13 @@ const endSession = asyncHandler(async (req, res) => {
                     const justQualified = !enrollment.certificateIssued && enrollment.bestScore >= drive.minScore;
                     if (justQualified) {
                         enrollment.certificateIssued = true;
+                        justQualifiedDrive = {
+                            driveId: String(drive._id),
+                            companyName: drive.companyName,
+                            jobRole: drive.jobRole,
+                            bestScore: enrollment.bestScore,
+                            minScore: drive.minScore,
+                        };
                     }
                     await enrollment.save();
 
@@ -570,7 +578,7 @@ const endSession = asyncHandler(async (req, res) => {
     const io = req.app.get('io');
     pushSocketUpdate(io, userId, sessionId, 'SESSION_COMPLETED', 'Interview session ended early.', session);
 
-    res.json({ message: 'Session ended successfully.', session });
+    res.json({ message: 'Session ended successfully.', session, justQualifiedDrive });
 });
 
 // @desc    Toggle sharing on/off for a completed session

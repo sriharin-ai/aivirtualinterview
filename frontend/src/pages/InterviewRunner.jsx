@@ -295,8 +295,15 @@ function InterviewRunner() {
 
     dispatch(endSession(sessionId))
       .unwrap()
-      .then(() => {
+      .then((result) => {
         localStorage.removeItem(`drafts_${sessionId}`);
+        if (result?.justQualifiedDrive) {
+          const { companyName, jobRole, bestScore } = result.justQualifiedDrive;
+          toast.success(
+            `🎉 You qualified for ${companyName}! Your score of ${bestScore}% met the minimum. A certificate is waiting for you.`,
+            { autoClose: 8000 }
+          );
+        }
         navigate(`/review/${sessionId}`);
       })
       .catch(err => toast.error("Could not finish session. Ai is working on it."));
